@@ -1,0 +1,17 @@
+import gin.tf.external_configurables
+
+Train.model = @BuildModel()
+BuildModel.dims = 6
+BuildModel.optimizer = @Adam()
+Adam.lr = 1e-4
+Adam.beta_1 = 0.99
+BuildModel.bijector = @IAF()
+IAF.num_bijectors = 5
+IAF.dims = 6
+IAF.hidden_units = [32, 32]
+
+Train.epochs = 30
+
+Dataset.label = "base_plikHM_TTTEEE_lowl_lowE"
+Dataset.nsamples = 3000
+Dataset.dims = 6
