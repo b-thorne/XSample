@@ -1,3 +1,6 @@
 [submodule "class_public"]
 	path = class_public
 	url = git@github.com:mcmeiers/class_public.git
+[submodule "XSample_Paper"]
+	path = XSample_Paper
+	url = git@github.com:bthorne93/XSample_Paper.git

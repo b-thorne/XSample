@@ -31,7 +31,7 @@ NUM_ANCHORS = 10
 LMAX = 2000
 
 DEFAULT_PARAMS = {
-    'output': 'tCl lCl',
+    'output': 'tCl lCl pCl',
     'l_max_scalars': LMAX, 
     'lensing': 'yes',
     'A_s': 2.3e-9,
@@ -119,7 +119,7 @@ def ExploreDesignerHz(results_dir, N=5):
         insert_inset_colorbar(fig, ax, vmin, vmax, r"$c_{\rm eff}^2$")
         ax.plot(computed_cls['ell'], np.sqrt(c2d * computed_cls['tt']), color=cmap(i / N))
     
-    ax.tick_params(axis="both", direction="in", right=True, top=True)
+    ax.tick_params(axis="both", direction="inout", right=True, top=True)
     ax.set_xlim(2, 2000)
     ax.set_xlabel(r"$\ell$")
     ax.set_ylabel(r"$\left[\ell(\ell+1)/2\pi C_\ell\right]^{1/2}~({\rm \mu K})$")
@@ -128,13 +128,26 @@ def ExploreDesignerHz(results_dir, N=5):
 
     return
 
+def get_plotting_te(te):
+    indices_pos = np.where(te > 0)[0]
+    indices_neg = np.where(te < 0)[0]
+    scaled_array = np.empty_like(te)
+    scaled_array[indices_pos] = np.sqrt(te[indices_pos])
+    scaled_array[indices_neg] = - np.sqrt(- te[indices_neg])
+    return scaled_array
 
 
 def ExploreLCDM(results_dir, N=5):  
     """ Function runs CLASS varying one parameter at a time over a set range. Plots each
     of these parameter variations in a subplot.
     """
-    fig, axes = plt.subplots(2, 2, sharex=True, sharey=True)
+    fig_tt, axes_tt = plt.subplots(2, 2, sharex=True, sharey=True)
+    plt.subplots_adjust(wspace=0, hspace=0)
+
+    fig_te, axes_te = plt.subplots(2, 2, sharex=True, sharey=True)
+    plt.subplots_adjust(wspace=0, hspace=0)
+
+    fig_ee, axes_ee = plt.subplots(2, 2, sharex=True, sharey=True)
     plt.subplots_adjust(wspace=0, hspace=0)
 
     ranges = {
@@ -161,27 +174,64 @@ def ExploreLCDM(results_dir, N=5):
         params = GetDefaultParams()
         vmin, vmax = settings['lims']
         param_range = np.linspace(vmin, vmax, N)
-        ax = axes.flatten()[ax_i]
+        ax_tt = axes_tt.flatten()[ax_i]
+        ax_te = axes_te.flatten()[ax_i]
+        ax_ee = axes_ee.flatten()[ax_i]
         for i in range(N):
             params[k] = param_range[i]
             computed_cls, c2d = GetSpectra(params, 'lensed')
             if k == 'A_s':
+                vmin, vmax = settings['lims']
                 vmin *= 1e9
                 vmax *= 1e9
-            insert_inset_colorbar(fig, ax, vmin, vmax, settings['label'])
-            ax.plot(computed_cls['ell'], np.sqrt(c2d * computed_cls['tt']), color=cmap(i / N))
+            insert_inset_colorbar(fig_tt, ax_tt, vmin, vmax, settings['label'])
+            ax_tt.plot(computed_cls['ell'], np.sqrt(c2d * computed_cls['tt']), color=cmap(i / N))
 
-    for ax in axes.flatten():
+            insert_inset_colorbar(fig_te, ax_te, vmin, vmax, settings['label'])
+            #scaled_te = get_plotting_te(c2d * computed_cls['te'])
+            #ax_te.plot(computed_cls['ell'], scaled_te, color=cmap(i / N))
+            ax_te.plot(computed_cls['ell'], c2d * computed_cls['te'], color=cmap(i / N))
+
+            insert_inset_colorbar(fig_ee, ax_ee, vmin, vmax, settings['label'])
+            ax_ee.plot(computed_cls['ell'], np.sqrt(c2d * computed_cls['ee']), color=cmap(i / N))
+
+    for ax in axes_tt.flatten():
         ax.set_yscale('linear')
         ax.set_ylim(0, 110)
         ax.set_xlim(2, 2000)
+        ax.tick_params(axis="both", direction="inout", right=True, top=True)
 
-    axes[0, 0].set_ylabel(r"$\left[\ell(\ell + 1)/2\pi C_\ell\right]^{1/2}~({\rm \mu K})$")
-    axes[1, 0].set_ylabel(r"$\left[\ell(\ell + 1)/2\pi C_\ell\right]^{1/2}~({\rm \mu K})$")
-    axes[1, 1].set_xlabel(r"$\ell$")
-    axes[1, 0].set_xlabel(r"$\ell$")
+    for ax in axes_te.flatten():
+        ax.set_yscale('linear')
+        ax.set_ylim(-220, 220)
+        ax.set_xlim(2, 2000)
+        ax.tick_params(axis="both", direction="inout", right=True, top=True)
 
-    fig.savefig(results_dir / "LCDM_spectra.pdf")
+    for ax in axes_ee.flatten():
+        ax.set_yscale('linear')
+        ax.set_ylim(0, 12)
+        ax.set_xlim(2, 2000)
+        ax.tick_params(axis="both", direction="inout", right=True, top=True)
+
+    for axes in [axes_tt, axes_ee]:
+        axes[0, 0].set_ylabel(r"$\left[\ell(\ell + 1)/2\pi C_\ell\right]^{1/2}~({\rm \mu K})$")
+        axes[1, 0].set_ylabel(r"$\left[\ell(\ell + 1)/2\pi C_\ell\right]^{1/2}~({\rm \mu K})$")
+        axes[1, 1].set_xlabel(r"$\ell$")
+        axes[1, 0].set_xlabel(r"$\ell$")
+
+    
+    axes_te[0, 0].set_ylabel(r"$\ell(\ell + 1)/2\pi C_\ell~({\rm \mu K^2})$")
+    axes_te[1, 0].set_ylabel(r"$\ell(\ell + 1)/2\pi C_\ell~({\rm \mu K^2})$")
+    axes_te[1, 1].set_xlabel(r"$\ell$")
+    axes_te[1, 0].set_xlabel(r"$\ell$")
+
+    fig_tt.suptitle(r"${\rm Temperature}$", fontsize=14)
+    fig_te.suptitle(r"${\rm Temperature-E-mode~polarization}$", fontsize=14)
+    fig_ee.suptitle(r"${\rm E-mode~polarization}$", fontsize=14)
+
+    fig_tt.savefig(results_dir / "LCDM_tt.pdf")
+    fig_te.savefig(results_dir / "LCDM_te.pdf")
+    fig_ee.savefig(results_dir / "LCDM_ee.pdf")
 
     return
 
@@ -191,7 +241,7 @@ def main(argv):
     results_dir = Path(FLAGS.results_dir).absolute()
     results_dir.mkdir(exist_ok=True, parents=True)
 
-    if FLAGS.mode == "All":
+    if FLAGS.mode == "All": 
         ExploreLCDM(results_dir)
         ExploreDesignerHz(results_dir)
     if FLAGS.mode == "LCDM":
