@@ -14,48 +14,28 @@ import os
 import sys
 from collections import namedtuple
 
+import getdist
+
 import requests
 
 FLAGS = flags.FLAGS
 
-DATASET_DIRECTORY = "/global/cscratch1/sd/bthorne/XSample/datasets"
-
+# warning this is an 11 GB file.
 BASELINE_CHAINS_URL = "http://pla.esac.esa.int/pla/aio/product-action?COSMOLOGY.FILE_ID=COM_CosmoParams_base-plikHM-TTTEEE-lowl-lowE_R3.00.zip"
-BAELINE_CHAINS_DIR = "/global/cscratch1/sd/bthorne/XSample/chains/baseline_LCDM/base/plikHM_TTTEEE_lowl_lowE"
-
-GNILC_FNAME = "COM_CompMap_Dust-GNILC-F545_2048_R2.00.fits"
-
+CHAINS_DIR = "/global/cscratch1/sd/bthorne/XSample"
 
 STRING_TO_CHAIN = {
-    "base_plikHM_TTTEEE_lowl_lowE": Path(BAELINE_CHAINS_DIR) / "base_plikHM_TTTEEE_lowl_lowE.npy"
+    "base_plikHM_TTTEEE_lowl_lowE": Path(CHAINS_DIR) / "base" / "plikHM_TTTEEE_lowl_lowE" / "base_plikHM_TTTEEE_lowl_lowE",
+    "base_omegak_plikHM_TTTEEE_lowl_lowE": Path(CHAINS_DIR) / "base_omegak"  / "plikHM_TTTEEE_lowl_lowE" /  "base_omegak_plikHM_TTTEEE_lowl_lowE",
+    "base_omegak_plikHM_TTTEEE_lowl_lowE_BAO": Path(CHAINS_DIR) / "base_omegak"  / "plikHM_TTTEEE_lowl_lowE_BAO" /  "base_omegak_plikHM_TTTEEE_lowl_lowE_BAO",
 }
 
-def prepare_base_LCDM_plikHM_TTTEEE_lowl_lowE():
-    chains = [np.genfromtxt(Path(BAELINE_CHAINS_DIR) / f"base_plikHM_TTTEEE_lowl_lowE_{i+1}.txt") for i in trange(4)]
-    chains = np.concatenate(chains)
-    logging.info("Saving to " + str(STRING_TO_CHAIN["base_plikHM_TTTEEE_lowl_lowE"]))
-    np.save(STRING_TO_CHAIN["base_plikHM_TTTEEE_lowl_lowE"], chains)
-    return
-
-
 def load_dataset(label):
-    samples = np.load(STRING_TO_CHAIN[label])
-    paramnames = np.genfromtxt(str(Path(BAELINE_CHAINS_DIR) / label) + ".paramnames", delimiter="\t", dtype=('U10', 'U10'))
-    dataset_info = {
-        'nsamples': samples.shape[0],
-        'nparams': samples.shape[-1],
-        'paramnames': paramnames[:, 0],
-        'paramnames_latex': paramnames[:, 1]
-    }
-    return samples, dataset_info
-
+    return getdist.loadMCSamples(str(STRING_TO_CHAIN[label])) 
 
 def main(argv):
     del argv
-
-    if FLAGS.dataset == "base_LCDM_plikHM_TTTEEE_lowl_lowE":
-        prepare_base_LCDM_plikHM_TTTEEE_lowl_lowE()
-    
+    # would be nice to put some plots of default datasets here
     return
 
 

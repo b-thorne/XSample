@@ -18,6 +18,8 @@ import cosmoplotian.colormaps
 from getdist import plots, MCSamples
 import getdist
 
+plt.rcParams['text.usetex'] = True
+
 from pathlib import Path
 import pickle
 
@@ -74,6 +76,7 @@ def BuildModel(dims, bijector, optimizer=tf.optimizers.Adam):
 @gin.configurable("Train", denylist=["train_dataset"])
 def Train(train_dataset, model, batch_size=100, epochs=50, shuffle=True, verbose=True):
     (model, q_x_z) = model
+    print(train_dataset.shape)
     history = model.fit(x=train_dataset,
             y=np.zeros((train_dataset.shape[0], 0), dtype=np.float32),
             batch_size=batch_size,
@@ -84,42 +87,37 @@ def Train(train_dataset, model, batch_size=100, epochs=50, shuffle=True, verbose
     return model, q_x_z, history
 
 @gin.configurable("Dataset")
-def Dataset(label, nsamples, dims):
-    data, info = load_dataset(label)
-    # return just the six LCDM parameters for now.
-    info['nsamples'] = nsamples
-    return data[:nsamples, 2:2+dims], info
+def Dataset(label):
+    data = load_dataset(label)
+    return data
 
-def Eval(model, q_x_z, results_dir):
-    training_data, training_info = Dataset()
-    full_data, full_info = Dataset(nsamples=-1)
-    training_samples = MCSamples(samples=training_data, label=f"PlikHM TTTEEE+lowl+lowE, training subset of {training_info['nsamples']}")
-    prior_samples = MCSamples(samples=q_x_z.sample(full_data.shape[0]).numpy(), label="$q(x | z)$")
-    data_samples = MCSamples(samples=full_data, label=f"PlikHM TTTEEE+lowl+lowE, full dataset {full_info['nsamples']}")
-    g = plots.get_subplot_plotter()
-    g.triangle_plot([training_samples, prior_samples, data_samples], filled=True)
+def Eval(model, q_x_z, training_dataset, results_dir):
+    approximate_posterior = training_dataset.copy(label=r"$q_x(x)$")
+    approximate_posterior.samples = q_x_z.sample(training_dataset.samples.shape[0]).numpy()
+
+    g = plots.get_subplot_plotter(width_inch=6.5)
+    g.triangle_plot([training_dataset, approximate_posterior], ['omegabh2', 'omegach2', 'theta', 'tau', 'omegak', 'logA', 'ns'], filled=True)
     g.export(str(results_dir / "densities" / "corner.pdf"))
 
-    g = plots.get_subplot_plotter()
-    pulled_back_data = MCSamples(samples=q_x_z.bijector.inverse(full_data).numpy(), label="PlikHM TTTEEE+lowl+lowE, pulled back")
-    g.triangle_plot(pulled_back_data, filled=True)
-    g.export(str(results_dir / "densities" / "pulled_back.pdf"))
+    #g = plots.get_subplot_plotter(width_inch=6.5)
+    #pulled_back_data = MCSamples(samples=q_x_z.bijector.inverse(full_data).numpy(), label="PlikHM TTTEEE+lowl+lowE, pulled back")
+    #g.triangle_plot(pulled_back_data, filled=True)
+    #g.export(str(results_dir / "densities" / "pulled_back.pdf"))
     return 
 
 def main(argv):
     del argv # unused
     gin.parse_config_file(FLAGS.gin_config)
-    
+
     results_dir = Path(FLAGS.results_dir).absolute()
     results_dir.mkdir(exist_ok=True, parents=True)
 
     # read in dataset
-    data, info = Dataset()
-
+    data = Dataset(FLAGS.dataset)
     # train model and evaluate
     if FLAGS.mode == "standard":
-        model, q_x_z, history = Train(data)
-        Eval(model, q_x_z, results_dir)
+        model, q_x_z, history = Train(data.samples)
+        Eval(model, q_x_z, data, results_dir)
 
     return
 
@@ -129,6 +127,12 @@ if __name__ == "__main__":
         "standard", 
         ["standard"], 
         "Which mode to run in.")
+    flags.DEFINE_enum(
+        "dataset",
+        "base_plikHM_TTTEEE_lowl_lowE",
+        ["base_plikHM_TTTEEE_lowl_lowE", "base_omegak_plikHM_TTTEEE_lowl_lowE", "base_omegak_plikHM_TTTEEE_lowl_lowE_BAO"],
+        "Which dataset to used."
+    )
     flags.DEFINE_string(
         "gin_config", 
         "./configs/config.gin", 
