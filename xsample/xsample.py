@@ -23,7 +23,7 @@ plt.rcParams['text.usetex'] = True
 from pathlib import Path
 import pickle
 
-from datasets import load_dataset
+from datasets import LoadDataset
 
 tfkl = tf.keras.layers
 tfk = tf.keras
@@ -76,7 +76,6 @@ def BuildModel(dims, bijector, optimizer=tf.optimizers.Adam):
 @gin.configurable("Train", denylist=["train_dataset"])
 def Train(train_dataset, model, batch_size=100, epochs=50, shuffle=True, verbose=True):
     (model, q_x_z) = model
-    print(train_dataset.shape)
     history = model.fit(x=train_dataset,
             y=np.zeros((train_dataset.shape[0], 0), dtype=np.float32),
             batch_size=batch_size,
@@ -88,7 +87,7 @@ def Train(train_dataset, model, batch_size=100, epochs=50, shuffle=True, verbose
 
 @gin.configurable("Dataset")
 def Dataset(label):
-    data = load_dataset(label)
+    data = LoadDataset(label)
     return data
 
 def Eval(model, q_x_z, training_dataset, results_dir):
@@ -99,10 +98,6 @@ def Eval(model, q_x_z, training_dataset, results_dir):
     g.triangle_plot([training_dataset, approximate_posterior], ['omegabh2', 'omegach2', 'theta', 'tau', 'omegak', 'logA', 'ns'], filled=True)
     g.export(str(results_dir / "densities" / "corner.pdf"))
 
-    #g = plots.get_subplot_plotter(width_inch=6.5)
-    #pulled_back_data = MCSamples(samples=q_x_z.bijector.inverse(full_data).numpy(), label="PlikHM TTTEEE+lowl+lowE, pulled back")
-    #g.triangle_plot(pulled_back_data, filled=True)
-    #g.export(str(results_dir / "densities" / "pulled_back.pdf"))
     return 
 
 def main(argv):
@@ -113,7 +108,7 @@ def main(argv):
     results_dir.mkdir(exist_ok=True, parents=True)
 
     # read in dataset
-    data = Dataset(FLAGS.dataset)
+    data = Dataset()
     # train model and evaluate
     if FLAGS.mode == "standard":
         model, q_x_z, history = Train(data.samples)
@@ -127,12 +122,6 @@ if __name__ == "__main__":
         "standard", 
         ["standard"], 
         "Which mode to run in.")
-    flags.DEFINE_enum(
-        "dataset",
-        "base_plikHM_TTTEEE_lowl_lowE",
-        ["base_plikHM_TTTEEE_lowl_lowE", "base_omegak_plikHM_TTTEEE_lowl_lowE", "base_omegak_plikHM_TTTEEE_lowl_lowE_BAO"],
-        "Which dataset to used."
-    )
     flags.DEFINE_string(
         "gin_config", 
         "./configs/config.gin", 
