@@ -1,0 +1,12 @@
+import gin.tf.external_configurables
+Train.model = @BuildModel()
+BuildModel.dims = 93
+BuildModel.optimizer = @Adam()
+Adam.lr = 1e-4
+Adam.beta_1 = 0.99
+BuildModel.bijector = @MAF()
+MAF.num_bijectors = 5
+MAF.dims = 93
+MAF.hidden_units = [100, 100]
+Train.epochs = 30
+Dataset.label = "base_omegak_plikHM_TTTEEE_lowl_lowE"

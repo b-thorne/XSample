@@ -8,8 +8,8 @@ Adam.beta_1 = 0.99
 BuildModel.bijector = @MAF()
 MAF.num_bijectors = 5
 MAF.dims = 97
-MAF.hidden_units = [256, 256]
+MAF.hidden_units = [100, 100]
 
 Train.epochs = 30
 
-Dataset.label = "base_plikHM_TTTEEE_lowl_lowE_BAO"
+Dataset.label = "base_omegak_plikHM_TTTEEE_lowl_lowE_BAO"
