@@ -117,6 +117,15 @@ def angular_diameter_distance(z, p):
     elif K > 0:
         return 1 / np.sqrt(K) * np.sinh(cd * np.sqrt(K))
     
+def drs_dz(z, p):
+    R = 3 * p.rho_b_0 / (4 * p.rho_gamma_0 * (1 + z))
+    return 1 / H(z, p) / np.sqrt(3 * (1 + R))
+
+def sound_horizon(z, p):
+    def integrand(x):
+        return drs_dz(x, p)
+    return quad(integrand, z, np.inf)[0]
+
 def H(z, p):
     return np.sqrt(8 * np.pi / 3.) * np.sqrt(p.rho_k_0 * (1 + z) ** 2 + rho_b(z, p) + rho_c(z, p) + rho_lambda(z, p) + rho_gamma(z, p) + rho_nu(z, p))
 
@@ -151,11 +160,16 @@ def main(argv):
     if FLAGS.mode == "PlotBAOData":
         PlotBAOData(results_dir)
 
+    if FLAGS.mode == "testing":
+        pars = Params(omega_b=0.0225,omega_c=0.12,H0=67.0,Nnu_massive=1.0,Nnu_massless=2.046,mnu=0.06, Omega_k=0.,Tcmb=2.7255, w=-1)
+        print(sound_horizon(1000, pars) / Mpc)
+
 if __name__ == "__main__":
     flags.DEFINE_enum(
         "mode", 
         "PlotBAOData", 
-        ["PlotBAOData"], 
+        ["PlotBAOData",
+        "testing"], 
         "Which mode to run in.")
     flags.DEFINE_string(
         "results_dir", 
