@@ -3,6 +3,8 @@ from absl import app
 
 import numpy as np 
 from scipy.integrate import quad
+from scipy.optimize import root_scalar
+from scipy.interpolate import interp1d
 from dataclasses import dataclass, field
 
 from pathlib import Path
@@ -12,6 +14,7 @@ import cosmoplotian.colormaps
 
 from spectra import insert_inset_colorbar
 from datasets import LoadBAODataset
+from recfast4py import recfast
 
 string_cmap = "div yel grn"
 #string_cmap = "RdYlBu"
@@ -29,6 +32,8 @@ Mpc = 1.90916956403801e57
 gram = 45946.59168182904
 Joule = 5.11221307704105e-10
 me = 510.9989461 * eV
+sigma_T = 2.546617863799246e41
+mH = 7.690195407123562e-20
 
 H0units = km/second/Mpc
 rhox_over_omegax = 3 * (100 * H0units) ** 2 / (8 * np.pi)
@@ -44,6 +49,9 @@ class Params:
     Omega_k: field(default=0.)
     Tcmb: field(default=2.7255)
     w: field(default=-1)
+    Gamma_P: field(default=0.24)
+    F: field(default=1.14) # RECFAST parameter
+    fDM: field(default=0.) # RECFAST parameter
 
     def __post_init__(self):
         self.hsquared = (self.H0 / 100.) ** 2
@@ -126,6 +134,23 @@ def sound_horizon(z, p):
         return drs_dz(x, p)
     return quad(integrand, z, np.inf)[0]
 
+def r_drag(p):
+    return sound_horizon(z_drag(p), p)
+
+def z_drag(p):
+    def root_func(x):
+        return tau_drag(0, x, p) -1
+    roots = root_scalar(root_func, x0=800, x1=1400)
+    return roots.root
+
+def tau_drag(z1, z2, p):
+    R_div_a = 3 * p.rho_b_0 / (4. * p.rho_gamma_0)
+    zarr, Xe_H, Xe_He, Xe, TM = recfast.Xe_frac(p.Gamma_P, p.Tcmb, p.Omega_c, p.Omega_b, p.Omega_lambda, p.Omega_k, np.sqrt(p.hsquared), p.Nnu_massless, p.F, p.fDM)
+    xe = interp1d(zarr, Xe, kind='cubic')
+    def integrand(x):
+        return xe(x) / H(x, p) * (1 + x) ** 3
+    return  sigma_T * p.rho_b_0 / mH * (1 - p.Gamma_P) / R_div_a * quad(integrand, z1, z2)[0]
+
 def H(z, p):
     return np.sqrt(8 * np.pi / 3.) * np.sqrt(p.rho_k_0 * (1 + z) ** 2 + rho_b(z, p) + rho_c(z, p) + rho_lambda(z, p) + rho_gamma(z, p) + rho_nu(z, p))
 
@@ -135,21 +160,64 @@ def PlotBAOData(results_dir):
     
     z, DArd, Hzrd, cov, rd_fid = LoadBAODataset()
     fig, ax = plt.subplots(1, 1)
-    vmin = -0.05
-    vmax = 0.05
+    vmin = -0.1
+    vmax = 0.1
     N = 10
     for i, Omega_k in enumerate(np.linspace(vmin, vmax, N)):
-        pars = Params(omega_b=0.0225,omega_c=0.12,H0=67.0,Nnu_massive=1.0,Nnu_massless=2.046,mnu=0.06, Omega_k=Omega_k,Tcmb=2.7255, w=-1) 
-        ax.loglog(redshifts, vfunc(redshifts, pars) / Mpc, label=f"{Omega_k}", color=cmap(i / N))
-    ax.errorbar(z, DArd, fmt='o', yerr=np.sqrt(np.diag(cov)[[0, 2, 4]]), color='k')
+        pars = Params(omega_b=0.0225,omega_c=0.12,H0=67.0,Nnu_massive=1.0,Nnu_massless=2.046,mnu=0.06, Omega_k=Omega_k,Tcmb=2.7255, w=-1, Gamma_P=0.24, F=1.14, fDM=0.) 
+        ax.loglog(redshifts, vfunc(redshifts, pars) / Mpc, color=cmap(i / N), alpha=0.5)
+    ax.errorbar(z, DArd, fmt='o', yerr=np.sqrt(np.diag(cov)[[0, 2, 4]]), color='k', label="BOSS DR12")
+    pars = Params(omega_b=0.0225,omega_c=0.12,H0=67.0,Nnu_massive=1.0,Nnu_massless=2.046,mnu=0.06, Omega_k=0.,Tcmb=2.7255, w=-1, Gamma_P=0.24, F=1.14, fDM=0.) 
+    ax.loglog(redshifts, vfunc(redshifts, pars) / Mpc, color='k', label=r"$\Lambda {\rm CDM}$")
     ax.set_yscale('linear')
     ax.set_xlim(0.01, 2)
     ax.set_ylim(0, 5500)
-    ax.set_xlabel(r"$z$")
-    ax.set_ylabel(r"$D_A(z)~({\rm Mpc})$")
+    ax.set_xlabel(r"${\rm Redshift,}~z$")
+    ax.set_ylabel(r"${\rm Angular~Diameter~Distance,}~D_A(z)~({\rm Mpc})$")
+    ax.tick_params(direction="inout", axis="both")
+    ax.spines['right'].set_visible(False)
+    ax.spines['top'].set_visible(False)
+    ax.legend(loc=2, frameon=False)
     insert_inset_colorbar(fig, ax, vmin, vmax, r"$\Omega_k$")
     fig.savefig(results_dir / "DR12_BAO_data.pdf")
     return
+
+def PlotRECFAST(results_dir):
+    pars = Params(omega_b=0.0225,omega_c=0.12,H0=67.0,Nnu_massive=1.0,Nnu_massless=2.046,mnu=0.06, Omega_k=0.,Tcmb=2.7255, w=-1, Gamma_P=0.24, F=1.14, fDM=0.)
+        
+    zarr, Xe_H, Xe_He, Xe ,TM = recfast.Xe_frac(pars.Gamma_P, pars.Tcmb, pars.Omega_c, pars.Omega_b, pars.Omega_lambda, pars.Omega_k, np.sqrt(pars.hsquared), pars.Nnu_massless, pars.F, pars.fDM)
+    fig, ax = plt.subplots(1, 1)
+    ax.plot(zarr, Xe, 'k-', label=r"$X_{\rm e}$")
+    ax.plot(zarr, Xe_H, 'k--', label=r"$X_{\rm e, H}$")
+    ax.plot(zarr, Xe_He, 'k:', label=r"$X_{\rm e, He}$")
+    ax.set_ylabel(r"${\rm Ionization fraction,}~X_{\rm e}$")
+    ax.set_xlabel(r"${\rm Redshift,}~z$")
+    ax.set_xlim(500, 2500)
+    ax.legend(loc=2, frameon=False)
+    ax.tick_params(direction="inout", axis="both")
+    ax.spines['right'].set_visible(False)
+    ax.spines['top'].set_visible(False)
+    fig.savefig(results_dir / 'testing_recfast.pdf')
+    return 
+
+def drag_epoch_testing(p):
+    zarr, Xe_H, Xe_He, Xe ,TM = recfast.Xe_frac(p.Gamma_P, p.Tcmb, p.Omega_c, p.Omega_b, p.Omega_lambda, p.Omega_k, np.sqrt(p.hsquared), p.Nnu_massless, p.F, p.fDM)
+    xe = interp1d(zarr, Xe, kind='cubic')
+    zarr = np.array(zarr)
+    R_div_a = 3 * p.rho_b_0 / (4. * p.rho_gamma_0)
+    Hubble = np.vectorize(lambda x: H(x, p))
+    def integrand(x):
+        return sigma_T * p.rho_b_0 / mH * (1 - p.Gamma_P) / R_div_a * xe(x) / Hubble(x) * (1. + x) ** 3
+    fig, ax = plt.subplots(1, 1)
+    ax.plot(zarr, integrand(zarr))
+    ax.set_xlim(0, 800)
+    ax.set_yscale('log')
+    fig.savefig("integrand_testing.pdf")
+
+    print(quad(integrand, 1, 800, limit=50))
+
+
+    return 
 
 def main(argv):
     del argv 
@@ -160,15 +228,21 @@ def main(argv):
     if FLAGS.mode == "PlotBAOData":
         PlotBAOData(results_dir)
 
+    if FLAGS.mode == "RECFAST":
+        PlotRECFAST(results_dir)
+
     if FLAGS.mode == "testing":
-        pars = Params(omega_b=0.0225,omega_c=0.12,H0=67.0,Nnu_massive=1.0,Nnu_massless=2.046,mnu=0.06, Omega_k=0.,Tcmb=2.7255, w=-1)
-        print(sound_horizon(1000, pars) / Mpc)
+        pars = Params(omega_b=0.0225,omega_c=0.12,H0=67.0,Nnu_massive=1.0,Nnu_massless=2.046,mnu=0.06, Omega_k=0.,Tcmb=2.7255, w=-1, Gamma_P=0.24, F=1.14, fDM=0.)
+        print(z_drag(pars))
+        print(r_drag(pars) / Mpc)
+        #drag_epoch_testing(pars)
 
 if __name__ == "__main__":
     flags.DEFINE_enum(
         "mode", 
         "PlotBAOData", 
         ["PlotBAOData",
+        "RECFAST",
         "testing"], 
         "Which mode to run in.")
     flags.DEFINE_string(
