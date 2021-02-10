@@ -19,7 +19,6 @@ from datasets import LoadBAODataset
 from recfast4py import recfast
 
 string_cmap = "div yel grn"
-#string_cmap = "RdYlBu"
 cmap = mpl.cm.get_cmap(string_cmap)
 plt.rcParams['text.usetex'] = True
 mpl.rcParams['axes.prop_cycle'] = mpl.cycler(color=[cmap(0.2), "k", cmap(1)]) 
@@ -160,34 +159,66 @@ def H(z, p):
     return np.sqrt(8 * np.pi / 3.) * np.sqrt(p.rho_k_0 * (1 + z) ** 2 + rho_b(z, p) + rho_c(z, p) + rho_lambda(z, p) + rho_gamma(z, p) + rho_nu(z, p))
 
 def PlotBAOData(results_dir):
-    vfunc = np.vectorize(angular_diameter_distance)
+    """ Plot angular diameter distance as a function of redshift, and overplot
+    BOSS DR12 constraints.
+    """
     redshifts = np.logspace(-2, np.log10(2))
-    
     z, DArd, Hzrd, cov, rd_fid = LoadBAODataset()
+
     fig, ax = plt.subplots(1, 1)
     vmin = -0.1
     vmax = 0.1
     N = 10
     for i, Omega_k in enumerate(np.linspace(vmin, vmax, N)):
-        pars = Params(omega_b=0.0225,omega_c=0.12,H0=67.0,Nnu_massive=1.0,Nnu_massless=2.046,mnu=0.06, Omega_k=Omega_k,Tcmb=2.7255, w=-1, Gamma_P=0.24, F=1.14, fDM=0.) 
-        ax.loglog(redshifts, vfunc(redshifts, pars) / Mpc, color=cmap(i / N), alpha=0.5)
-    ax.errorbar(z, DArd, fmt='o', yerr=np.sqrt(np.diag(cov)[[0, 2, 4]]), color='k', label="BOSS DR12")
-    pars = Params(omega_b=0.0225,omega_c=0.12,H0=67.0,Nnu_massive=1.0,Nnu_massless=2.046,mnu=0.06, Omega_k=0.,Tcmb=2.7255, w=-1, Gamma_P=0.24, F=1.14, fDM=0.) 
-    ax.loglog(redshifts, vfunc(redshifts, pars) / Mpc, color='k', label=r"$\Lambda {\rm CDM}$")
+        pars = Params(omega_b=0.0225,omega_c=0.12,H0=67.0,Nnu_massive=1.0,Nnu_massless=2.046,mnu=0.06*eV, Omega_k=Omega_k,Tcmb=2.7255, w=-1, Gamma_P=0.24, F=1.14, fDM=0.) 
+        vfunc = np.vectorize(lambda x: H(x, pars))
+        ax.loglog(redshifts, vfunc(redshifts) / km * second * Mpc / (r_drag(pars) / Mpc) * rd_fid, color=cmap(i / N), alpha=0.5)
+    ax.errorbar(z, Hzrd, fmt='o', yerr=np.sqrt(np.diag(cov)[[1, 3, 5]]), color='k', label=r"${\rm BOSS~DR12}$")
+    pars = Params(omega_b=0.0225,omega_c=0.12,H0=67.0,Nnu_massive=1.0,Nnu_massless=2.046,mnu=0.06*eV, Omega_k=0.,Tcmb=2.7255, w=-1, Gamma_P=0.24, F=1.14, fDM=0.) 
+    vfunc = np.vectorize(lambda x: H(x, pars))
+    ax.loglog(redshifts, vfunc(redshifts) / km * second * Mpc / (r_drag(pars) / Mpc) * rd_fid, color='k', label=r"$\Lambda {\rm CDM}$")
     ax.set_yscale('linear')
-    ax.set_xlim(0.01, 2)
-    ax.set_ylim(0, 5500)
+    ax.set_xscale('linear')
+    ax.set_xlim(0., 1)
+    ax.set_ylim(65, 120)
     ax.set_xlabel(r"${\rm Redshift,}~z$")
-    ax.set_ylabel(r"${\rm Angular~Diameter~Distance,}~D_A(z)~({\rm Mpc})$")
+    ax.set_ylabel(r"$H(z)~(r_{\rm d} / r_{\rm d}^{\rm fid})~({\rm km/s/Mpc})$")
     ax.tick_params(direction="inout", axis="both")
     ax.spines['right'].set_visible(False)
     ax.spines['top'].set_visible(False)
     ax.legend(loc=2, frameon=False)
     insert_inset_colorbar(fig, ax, vmin, vmax, r"$\Omega_k$")
-    fig.savefig(results_dir / "DR12_BAO_data.pdf")
+    fig.savefig(results_dir / "DR12_BAO_Hz.pdf")
+
+    fig, ax = plt.subplots(1, 1)
+    vmin = -0.1
+    vmax = 0.1
+    N = 10
+    for i, Omega_k in enumerate(np.linspace(vmin, vmax, N)):
+        pars = Params(omega_b=0.0225,omega_c=0.12,H0=67.0,Nnu_massive=1.0,Nnu_massless=2.046,mnu=0.06*eV, Omega_k=Omega_k,Tcmb=2.7255, w=-1, Gamma_P=0.24, F=1.14, fDM=0.) 
+        vfunc = np.vectorize(lambda x: angular_diameter_distance(x, pars))
+        ax.loglog(redshifts, vfunc(redshifts) / r_drag(pars) * rd_fid, color=cmap(i / N), alpha=0.5)
+    ax.errorbar(z, DArd, fmt='o', yerr=np.sqrt(np.diag(cov)[[0, 2, 4]]), color='k', label=r"${\rm BOSS~DR12}$")
+    pars = Params(omega_b=0.0225,omega_c=0.12,H0=67.0,Nnu_massive=1.0,Nnu_massless=2.046,mnu=0.06*eV, Omega_k=0.,Tcmb=2.7255, w=-1, Gamma_P=0.24, F=1.14, fDM=0.) 
+    vfunc = np.vectorize(lambda x: angular_diameter_distance(x, pars))
+    ax.loglog(redshifts, vfunc(redshifts) / r_drag(pars) * rd_fid, color='k', label=r"$\Lambda {\rm CDM}$")
+    ax.set_yscale('linear')
+    ax.set_xscale('linear')
+    ax.set_xlim(0., 1)
+    ax.set_ylim(0, 4000)
+    ax.set_xlabel(r"${\rm Redshift,}~z$")
+    ax.set_ylabel(r"$D_M(z)~(r_{\rm d}^{\rm fid} / r_{\rm d})~({\rm Mpc})$")
+    ax.tick_params(direction="inout", axis="both")
+    ax.spines['right'].set_visible(False)
+    ax.spines['top'].set_visible(False)
+    ax.legend(loc=2, frameon=False)
+    insert_inset_colorbar(fig, ax, vmin, vmax, r"$\Omega_k$")
+    fig.savefig(results_dir / "DR12_BAO_DMz.pdf")
     return
 
 def PlotRECFAST(results_dir):
+    """ Function to plot RECFAST prediction of ionization fraction.
+    """
     pars = Params(omega_b=0.0225,omega_c=0.12,H0=67.0,Nnu_massive=1.0,Nnu_massless=2.046,mnu=0.06*eV, Omega_k=0.,Tcmb=2.7255, w=-1, Gamma_P=0.24, F=1.14, fDM=2.e-24 * eV / second)
     zarr, Xe_H, Xe_He, Xe, TM = recfast.Xe_frac(pars.Gamma_P, pars.Tcmb, pars.Omega_c, pars.Omega_b, pars.Omega_lambda, pars.Omega_k, np.sqrt(pars.hsquared), pars.Nnu_massless, pars.F, pars.fDM, switch=1)
     
@@ -195,7 +226,6 @@ def PlotRECFAST(results_dir):
     ax.plot(zarr, Xe, 'k-', label=r"$X_{\rm e}$")
     ax.plot(zarr, Xe_H, 'k--', label=r"$X_{\rm e, H}$")
     ax.plot(zarr, Xe_He, 'k:', label=r"$X_{\rm e, He}$")
-
     ax.set_ylabel(r"${\rm Ionization fraction,}~X_{\rm e}$")
     ax.set_xlabel(r"${\rm Redshift,}~z$")
     ax.set_xlim(500, 2500)
@@ -203,41 +233,30 @@ def PlotRECFAST(results_dir):
     ax.tick_params(direction="inout", axis="both")
     ax.spines['right'].set_visible(False)
     ax.spines['top'].set_visible(False)
-    fig.savefig(results_dir / 'testing_recfast.pdf')
-    return 
-
-def drag_epoch_testing(p):
-    zarr, Xe_H, Xe_He, Xe ,TM = recfast.Xe_frac(p.Gamma_P, p.Tcmb, p.Omega_c, p.Omega_b, p.Omega_lambda, p.Omega_k, np.sqrt(p.hsquared), p.Nnu_massless, p.F, p.fDM, Hswitch=1)
-    xe = interp1d(zarr, Xe, kind='cubic')
-    zarr = np.array(zarr)
-    R_div_a = 3 * p.rho_b_0 / (4. * p.rho_gamma_0)
-    Hubble = np.vectorize(lambda x: H(x, p))
-    def integrand(x):
-        return sigma_T * p.rho_b_0 / mH * (1 - p.Gamma_P) / R_div_a * xe(x) / Hubble(x) * (1. + x) ** 3
-    fig, ax = plt.subplots(1, 1)
-    ax.plot(zarr, integrand(zarr))
-    ax.set_xlim(0, 800)
-    ax.set_yscale('log')
-    fig.savefig("integrand_testing.pdf")
-
-    print(quad(integrand, 1, 800, limit=50))
-
-
+    fig.savefig(results_dir / 'RECFAST.pdf')
     return 
 
 def TestAgainstCAMB(results_dir):
+    """ Function to compare our implementation to CAMB for the comoving angular
+    diameter distance, Hubble rate, and ionization fraction, as well as the 
+    redshift of baryon drag, and sound horizon at baryon drag.
+    """
+    # Parameters from PL18
     p = Params(omega_b=0.02212,omega_c=0.1206,H0=66.88,Nnu_massive=1.0,Nnu_massless=2.046,mnu=0.06*eV, Omega_k=0.,Tcmb=2.7255, w=-1, Gamma_P=0.24, F=1.14, fDM=0.)
     
+    # Redshift range of interest for recombination
     z = np.linspace(500, 2500, 1000)
+    # Compute recfast
     zarr, Xe_H, Xe_He, Xe ,TM = recfast.Xe_frac(p.Gamma_P, p.Tcmb, p.Omega_c, p.Omega_b, p.Omega_lambda, p.Omega_k, np.sqrt(p.hsquared), p.Nnu_massless + p.Nnu_massive, p.F, p.fDM, switch=1)
     xe = interp1d(zarr, Xe, kind='cubic')
-
+    # Comopute ionization history from CAMB (also uses RECFAST)
     camb_res = camb.get_background(camb.set_params(H0=p.H0, ombh2=p.omega_b, omch2=p.omega_c, mnu=p.mnu, nnu=p.Nnu_massive + p.Nnu_massless, tau=0.07, YHe=p.Gamma_P, recombination_model='Recfast'))
     back_ev = camb_res.get_background_redshift_evolution(z, ['x_e'], format='array')
 
+    # 1. Plot comparison of ionization histories
     fig, ax = plt.subplots(1, 1)
-    ax.plot(z, xe(z), label="Ours")
-    ax.plot(z, back_ev[:, 0], label="CAMB")
+    ax.plot(z, xe(z), label=r"${\rm Ours}$")
+    ax.plot(z, back_ev[:, 0], label=r"${\rm CAMB}$")
     ax.legend(loc=4, frameon=False)
     ax.tick_params(axis='both', direction='inout')
     ax.spines['top'].set_visible(False)
@@ -246,12 +265,13 @@ def TestAgainstCAMB(results_dir):
     ax.set_xlabel(r"${\rm Redshift,}~z$")
     fig.savefig(results_dir / "CompareXeCAMB.pdf")
 
+    # 2. Plot comparison of comoving angular diameter distance
     z = np.linspace(0, 4, 100)
     DA = camb_res.angular_diameter_distance(z)
     ourda = np.vectorize(lambda x: angular_diameter_distance(x, p))
     fig, ax = plt.subplots(1, 1)
-    ax.plot(z, DA, label="CAMB")
-    ax.plot(z, ourda(z) / Mpc / (1 + z), '--', label="Ours")
+    ax.plot(z, DA, label=r"${\rm CAMB}$")
+    ax.plot(z, ourda(z) / Mpc / (1 + z), '--', label=r"${\rm Ours}$")
     ax.legend(loc=2, frameon=False)
     ax.set_ylabel(r"${\rm Comoving~Angular~Diameter~Distance,}~D_A(z)~({\rm Mpc})$")
     ax.set_xlabel(r"${\rm Redshift,}~z$")
@@ -260,12 +280,13 @@ def TestAgainstCAMB(results_dir):
     ax.spines['right'].set_visible(False)
     fig.savefig(results_dir / "CompareDACAMB.pdf")
 
+    # 3. Plot comparison of Hubble rate
     z = np.linspace(0, 4, 100)
     CAMB_H = camb_res.hubble_parameter(z)
     ourH = np.vectorize(lambda x: H(x, p))
     fig, ax = plt.subplots(1, 1)
-    ax.plot(z, CAMB_H, label="CAMB")
-    ax.plot(z, ourH(z) / km * second * Mpc, '--', label="Ours")
+    ax.plot(z, CAMB_H, label=r"${\rm CAMB}$")
+    ax.plot(z, ourH(z) / km * second * Mpc, '--', label=r"${\rm Ours}$")
     ax.legend(loc=2, frameon=False)
     ax.set_ylabel(r"${\rm Hubble~Rate,}~H(z)~({\rm km/s/Mpc})$")
     ax.set_xlabel(r"${\rm Redshift,}~z$")
@@ -274,6 +295,7 @@ def TestAgainstCAMB(results_dir):
     ax.spines['right'].set_visible(False)
     fig.savefig(results_dir / "CompareHCAMB.pdf")
 
+    # Compare derived parameters
     CAMB_params = camb_res.get_derived_params()
     print("Dark Energy")
     print("-----------------------")
@@ -307,13 +329,13 @@ def main(argv):
         TestAgainstCAMB(results_dir)
 
     if FLAGS.mode == "testing":
-        pars = Params(omega_b=0.0225,omega_c=0.12,H0=67.0,Nnu_massive=1.0,Nnu_massless=2.046,mnu=0.06, Omega_k=0.,Tcmb=2.7255, w=-1, Gamma_P=0.24, F=1.14, fDM=0.)
-        pars = Params(omega_b=0.022383,omega_c=0.12011,H0=67.32,Nnu_massive=1.0,Nnu_massless=2.046,mnu=0.06, Omega_k=0.,Tcmb=2.7255, w=-1, Gamma_P=0.2454, F=1.14, fDM=2e-24 * eV / second)
-        print(pars.Omega_lambda)
-
-        print(z_drag(pars))
-        print(r_drag(pars) / Mpc)
-        #drag_epoch_testing(pars).0
+        p = Params(omega_b=0.02212,omega_c=0.1206,H0=66.88,Nnu_massive=1.0,Nnu_massless=2.046,mnu=0.06*eV, Omega_k=0.,Tcmb=2.7255, w=-1, Gamma_P=0.24, F=1.14, fDM=0.)
+        fig, ax = plt.subplots(1, 1)
+        z = np.linspace(0, 1, 10)
+        vfunc = np.vectorize(lambda x: H(x, p) / km * second * Mpc)
+        ax.plot(z, vfunc(z))
+        fig.savefig('testing.pdf')
+        pass
 
 if __name__ == "__main__":
     flags.DEFINE_enum(
