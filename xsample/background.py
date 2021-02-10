@@ -1,6 +1,8 @@
 from absl import flags
 from absl import app
 
+import camb
+
 import numpy as np 
 from scipy.integrate import quad
 from scipy.optimize import root_scalar
@@ -116,6 +118,8 @@ def comoving_distance(z, p):
     return - conformal_time(z, p)
 
 def angular_diameter_distance(z, p):
+    # this is the comoving angular diameter distance. Also known as the
+    # transverse comoving distance.
     cd = comoving_distance(z, p)
     K = - p.omega_k * (100 * km / second / Mpc) ** 2
     if K == 0:
@@ -132,7 +136,8 @@ def drs_dz(z, p):
 def sound_horizon(z, p):
     def integrand(x):
         return drs_dz(x, p)
-    return quad(integrand, z, np.inf)[0]
+    (result, err) = quad(integrand, z, np.inf)
+    return result
 
 def r_drag(p):
     return sound_horizon(z_drag(p), p)
@@ -145,7 +150,7 @@ def z_drag(p):
 
 def tau_drag(z1, z2, p):
     R_div_a = 3 * p.rho_b_0 / (4. * p.rho_gamma_0)
-    zarr, Xe_H, Xe_He, Xe, TM = recfast.Xe_frac(p.Gamma_P, p.Tcmb, p.Omega_c, p.Omega_b, p.Omega_lambda, p.Omega_k, np.sqrt(p.hsquared), p.Nnu_massless, p.F, p.fDM)
+    zarr, Xe_H, Xe_He, Xe, TM = recfast.Xe_frac(p.Gamma_P, p.Tcmb, p.Omega_c, p.Omega_b, p.Omega_lambda, p.Omega_k, np.sqrt(p.hsquared), p.Nnu_massive + p.Nnu_massless, p.F, p.fDM, switch=0, npz=1000)
     xe = interp1d(zarr, Xe, kind='cubic')
     def integrand(x):
         return xe(x) / H(x, p) * (1 + x) ** 3
@@ -183,13 +188,14 @@ def PlotBAOData(results_dir):
     return
 
 def PlotRECFAST(results_dir):
-    pars = Params(omega_b=0.0225,omega_c=0.12,H0=67.0,Nnu_massive=1.0,Nnu_massless=2.046,mnu=0.06, Omega_k=0.,Tcmb=2.7255, w=-1, Gamma_P=0.24, F=1.14, fDM=0.)
-        
-    zarr, Xe_H, Xe_He, Xe ,TM = recfast.Xe_frac(pars.Gamma_P, pars.Tcmb, pars.Omega_c, pars.Omega_b, pars.Omega_lambda, pars.Omega_k, np.sqrt(pars.hsquared), pars.Nnu_massless, pars.F, pars.fDM)
+    pars = Params(omega_b=0.0225,omega_c=0.12,H0=67.0,Nnu_massive=1.0,Nnu_massless=2.046,mnu=0.06*eV, Omega_k=0.,Tcmb=2.7255, w=-1, Gamma_P=0.24, F=1.14, fDM=2.e-24 * eV / second)
+    zarr, Xe_H, Xe_He, Xe, TM = recfast.Xe_frac(pars.Gamma_P, pars.Tcmb, pars.Omega_c, pars.Omega_b, pars.Omega_lambda, pars.Omega_k, np.sqrt(pars.hsquared), pars.Nnu_massless, pars.F, pars.fDM, switch=1)
+    
     fig, ax = plt.subplots(1, 1)
     ax.plot(zarr, Xe, 'k-', label=r"$X_{\rm e}$")
     ax.plot(zarr, Xe_H, 'k--', label=r"$X_{\rm e, H}$")
     ax.plot(zarr, Xe_He, 'k:', label=r"$X_{\rm e, He}$")
+
     ax.set_ylabel(r"${\rm Ionization fraction,}~X_{\rm e}$")
     ax.set_xlabel(r"${\rm Redshift,}~z$")
     ax.set_xlim(500, 2500)
@@ -201,7 +207,7 @@ def PlotRECFAST(results_dir):
     return 
 
 def drag_epoch_testing(p):
-    zarr, Xe_H, Xe_He, Xe ,TM = recfast.Xe_frac(p.Gamma_P, p.Tcmb, p.Omega_c, p.Omega_b, p.Omega_lambda, p.Omega_k, np.sqrt(p.hsquared), p.Nnu_massless, p.F, p.fDM)
+    zarr, Xe_H, Xe_He, Xe ,TM = recfast.Xe_frac(p.Gamma_P, p.Tcmb, p.Omega_c, p.Omega_b, p.Omega_lambda, p.Omega_k, np.sqrt(p.hsquared), p.Nnu_massless, p.F, p.fDM, Hswitch=1)
     xe = interp1d(zarr, Xe, kind='cubic')
     zarr = np.array(zarr)
     R_div_a = 3 * p.rho_b_0 / (4. * p.rho_gamma_0)
@@ -219,6 +225,72 @@ def drag_epoch_testing(p):
 
     return 
 
+def TestAgainstCAMB(results_dir):
+    p = Params(omega_b=0.02212,omega_c=0.1206,H0=66.88,Nnu_massive=1.0,Nnu_massless=2.046,mnu=0.06*eV, Omega_k=0.,Tcmb=2.7255, w=-1, Gamma_P=0.24, F=1.14, fDM=0.)
+    
+    z = np.linspace(500, 2500, 1000)
+    zarr, Xe_H, Xe_He, Xe ,TM = recfast.Xe_frac(p.Gamma_P, p.Tcmb, p.Omega_c, p.Omega_b, p.Omega_lambda, p.Omega_k, np.sqrt(p.hsquared), p.Nnu_massless + p.Nnu_massive, p.F, p.fDM, switch=1)
+    xe = interp1d(zarr, Xe, kind='cubic')
+
+    camb_res = camb.get_background(camb.set_params(H0=p.H0, ombh2=p.omega_b, omch2=p.omega_c, mnu=p.mnu, nnu=p.Nnu_massive + p.Nnu_massless, tau=0.07, YHe=p.Gamma_P, recombination_model='Recfast'))
+    back_ev = camb_res.get_background_redshift_evolution(z, ['x_e'], format='array')
+
+    fig, ax = plt.subplots(1, 1)
+    ax.plot(z, xe(z), label="Ours")
+    ax.plot(z, back_ev[:, 0], label="CAMB")
+    ax.legend(loc=4, frameon=False)
+    ax.tick_params(axis='both', direction='inout')
+    ax.spines['top'].set_visible(False)
+    ax.spines['right'].set_visible(False)
+    ax.set_ylabel(r"${\rm Ionization~Fraction,}~X_{\rm e}$")
+    ax.set_xlabel(r"${\rm Redshift,}~z$")
+    fig.savefig(results_dir / "CompareXeCAMB.pdf")
+
+    z = np.linspace(0, 4, 100)
+    DA = camb_res.angular_diameter_distance(z)
+    ourda = np.vectorize(lambda x: angular_diameter_distance(x, p))
+    fig, ax = plt.subplots(1, 1)
+    ax.plot(z, DA, label="CAMB")
+    ax.plot(z, ourda(z) / Mpc / (1 + z), '--', label="Ours")
+    ax.legend(loc=2, frameon=False)
+    ax.set_ylabel(r"${\rm Comoving~Angular~Diameter~Distance,}~D_A(z)~({\rm Mpc})$")
+    ax.set_xlabel(r"${\rm Redshift,}~z$")
+    ax.tick_params(axis='both', direction='inout')
+    ax.spines['top'].set_visible(False)
+    ax.spines['right'].set_visible(False)
+    fig.savefig(results_dir / "CompareDACAMB.pdf")
+
+    z = np.linspace(0, 4, 100)
+    CAMB_H = camb_res.hubble_parameter(z)
+    ourH = np.vectorize(lambda x: H(x, p))
+    fig, ax = plt.subplots(1, 1)
+    ax.plot(z, CAMB_H, label="CAMB")
+    ax.plot(z, ourH(z) / km * second * Mpc, '--', label="Ours")
+    ax.legend(loc=2, frameon=False)
+    ax.set_ylabel(r"${\rm Hubble~Rate,}~H(z)~({\rm km/s/Mpc})$")
+    ax.set_xlabel(r"${\rm Redshift,}~z$")
+    ax.tick_params(axis='both', direction='inout')
+    ax.spines['top'].set_visible(False)
+    ax.spines['right'].set_visible(False)
+    fig.savefig(results_dir / "CompareHCAMB.pdf")
+
+    CAMB_params = camb_res.get_derived_params()
+    print("Dark Energy")
+    print("-----------------------")
+    print("CAMB: ", camb_res.get_Omega('de'))
+    print("Ours: ", p.Omega_lambda)
+
+    print("Redshift of baryon drag")
+    print("-----------------------")
+    print("CAMB: ", CAMB_params['zdrag'])
+    print("Ours: ", z_drag(p))
+
+    print("Sound Horizon at Baryon Drag")
+    print("----------------------------")
+    print("CAMB :", camb_res.sound_horizon(CAMB_params['zdrag']))
+    print("Ours :", r_drag(p) / Mpc)
+    return 
+
 def main(argv):
     del argv 
 
@@ -231,11 +303,17 @@ def main(argv):
     if FLAGS.mode == "RECFAST":
         PlotRECFAST(results_dir)
 
+    if FLAGS.mode == "CAMBComparison":
+        TestAgainstCAMB(results_dir)
+
     if FLAGS.mode == "testing":
         pars = Params(omega_b=0.0225,omega_c=0.12,H0=67.0,Nnu_massive=1.0,Nnu_massless=2.046,mnu=0.06, Omega_k=0.,Tcmb=2.7255, w=-1, Gamma_P=0.24, F=1.14, fDM=0.)
+        pars = Params(omega_b=0.022383,omega_c=0.12011,H0=67.32,Nnu_massive=1.0,Nnu_massless=2.046,mnu=0.06, Omega_k=0.,Tcmb=2.7255, w=-1, Gamma_P=0.2454, F=1.14, fDM=2e-24 * eV / second)
+        print(pars.Omega_lambda)
+
         print(z_drag(pars))
         print(r_drag(pars) / Mpc)
-        #drag_epoch_testing(pars)
+        #drag_epoch_testing(pars).0
 
 if __name__ == "__main__":
     flags.DEFINE_enum(
@@ -243,6 +321,7 @@ if __name__ == "__main__":
         "PlotBAOData", 
         ["PlotBAOData",
         "RECFAST",
+        "CAMBComparison",
         "testing"], 
         "Which mode to run in.")
     flags.DEFINE_string(
